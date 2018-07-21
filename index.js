@@ -2,6 +2,7 @@ const AWS = require('aws-sdk'),
     dynamoDb = new AWS.DynamoDB.DocumentClient(),
     processResponse = require('./process-response'),
     IS_CORS = process.env.IS_CORS,
+    TABLE_NAME = process.env.TABLE_NAME,
     PRIMARY_KEY = process.env.PRIMARY_KEY;
 
 exports.handler = (event) => {
@@ -9,11 +10,11 @@ exports.handler = (event) => {
 		return Promise.resolve(processResponse(IS_CORS));
 	}
     if (!event.body) {
-        return Promise.resolve(processResponse(IS_CORS, 'invalid', 400));
+        return Promise.resolve(processResponse(IS_CORS, 'no body arguments provided', 400));
     }
     const editedItemId = event.pathParameters.id;
     if (!editedItemId) {
-        return Promise.resolve(processResponse(IS_CORS, 'invalid', 400));
+        return Promise.resolve(processResponse(IS_CORS, 'invalid id specified', 400));
     }
 
     const editedItem = JSON.parse(event.body);
@@ -42,9 +43,15 @@ exports.handler = (event) => {
 
     return dynamoDb.update(params)
     .promise()
-    .then(() => (processResponse(IS_CORS)))
-    .catch(err => {
-        console.log(err);
-        return processResponse(IS_CORS, 'dynamo-error', 500);
+    .then(() => {
+        return processResponse(IS_CORS);
+    })
+    .catch(dbError => {
+        let errorResponse = `Error: Execution update, caused a Dynamodb error, please look at your logs.`;
+        if (dbError.code === 'ValidationException') {
+            if (dbError.message.includes('reserved keyword')) errorResponse = `Error: You're using AWS reserved keywords as attributes`;
+        }
+        console.log(dbError);
+        return processResponse(IS_CORS, errorResponse, 500);
     });
 };
